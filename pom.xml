@@ -90,6 +90,7 @@
         <module>transformer</module>
 
         <!-- reader -->
+        <module>plugin/writer/hdfswriter</module>
         <module>plugin/reader/cassandrareader</module>
         <module>plugin/reader/clickhousereader</module>
         <module>plugin/reader/dbffilereader</module>
@@ -126,7 +127,6 @@
         <module>plugin/writer/hbase11xsqlwriter</module>
         <module>plugin/writer/hbase11xwriter</module>
         <module>plugin/writer/hbase20xsqlwriter</module>
-        <module>plugin/writer/hdfswriter</module>
         <module>plugin/writer/influxdbwriter</module>
         <module>plugin/writer/kuduwriter</module>
         <module>plugin/writer/mongodbwriter</module>

@@ -2,6 +2,7 @@
   "name": "hdfswriter",
   "parameter": {
     "defaultFS": "",
+    "httpFS": "",
     "fileType": "",
     "path": "",
     "fileName": "",

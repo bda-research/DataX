@@ -38,6 +38,10 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.File;
 
 public class HdfsWriter
         extends Writer
@@ -50,6 +54,7 @@ public class HdfsWriter
         private final HashSet<String> endFiles = new HashSet<>();//最终文件全路径
         private Configuration writerSliceConfig = null;
         private String defaultFS;
+        private String httpFS;
         private String path;
         private String fileName;
         private String writeMode;
@@ -71,6 +76,7 @@ public class HdfsWriter
         private void validateParameter()
         {
             this.defaultFS = this.writerSliceConfig.getNecessaryValue(Key.DEFAULT_FS, HdfsWriterErrorCode.REQUIRED_VALUE);
+            this.httpFS = this.writerSliceConfig.getString(Key.HTTP_FS, "");
             //fileType check
             String fileType = this.writerSliceConfig.getNecessaryValue(Key.FILE_TYPE, HdfsWriterErrorCode.REQUIRED_VALUE).toUpperCase();
             if (!Key.SUPPORT_FORMAT.contains(fileType)) {
@@ -240,80 +246,84 @@ public class HdfsWriter
         {
             LOG.info("begin do split...");
             List<Configuration> writerSplitConfigs = new ArrayList<>();
-            String filePrefix = fileName;
-
-            Set<String> allFiles = new HashSet<>();
-
-            //获取该路径下的所有已有文件列表
-            if (hdfsHelper.isPathexists(path)) {
-                allFiles.addAll(Arrays.asList(hdfsHelper.hdfsDirList(path)));
-            }
-
-            String fileSuffix;
-            //临时存放路径
-            String storePath = buildTmpFilePath(this.path);
-            if (storePath != null && storePath.contains("/")) {
-                //由于在window上调试获取的路径为转义字符代表的斜杠
-                //故出现被认为是文件名称的一部分，使得获取父目录存在问题
-                //最终影响到直接删除更高一层的目录，导致Hive数据出现问题。
-                storePath = storePath.replace('\\', '/');
-            }
-            //最终存放路径
-            String endStorePath = buildFilePath();
-            if (endStorePath != null && endStorePath.contains("/")) {
-                endStorePath = endStorePath.replace('\\', '/');
-            }
-            this.path = endStorePath;
-            for (int i = 0; i < mandatoryNumber; i++) {
-                // handle same file name
-
-                Configuration splitedTaskConfig = this.writerSliceConfig.clone();
-                String fullFileName;
-                String endFullFileName;
-
-                fileSuffix = UUID.randomUUID().toString().replace('-', '_');
-
-                fullFileName = String.format("%s%s%s__%s", defaultFS, storePath, filePrefix, fileSuffix);
-                endFullFileName = String.format("%s%s%s__%s", defaultFS, endStorePath, filePrefix, fileSuffix);
-
-                while (allFiles.contains(endFullFileName)) {
+            if(httpFS.equals("") ==  true) {
+                String filePrefix = fileName;
+    
+                Set<String> allFiles = new HashSet<>();
+    
+                //获取该路径下的所有已有文件列表
+                if (hdfsHelper.isPathexists(path)) {
+                    allFiles.addAll(Arrays.asList(hdfsHelper.hdfsDirList(path)));
+                }
+    
+                String fileSuffix;
+                //临时存放路径
+                String storePath = buildTmpFilePath(this.path);
+                if (storePath != null && storePath.contains("/")) {
+                    //由于在window上调试获取的路径为转义字符代表的斜杠
+                    //故出现被认为是文件名称的一部分，使得获取父目录存在问题
+                    //最终影响到直接删除更高一层的目录，导致Hive数据出现问题。
+                    storePath = storePath.replace('\\', '/');
+                }
+                //最终存放路径
+                String endStorePath = buildFilePath();
+                if (endStorePath != null && endStorePath.contains("/")) {
+                    endStorePath = endStorePath.replace('\\', '/');
+                }
+                this.path = endStorePath;
+                for (int i = 0; i < mandatoryNumber; i++) {
+                    // handle same file name
+    
+                    Configuration splitedTaskConfig = this.writerSliceConfig.clone();
+                    String fullFileName;
+                    String endFullFileName;
+    
                     fileSuffix = UUID.randomUUID().toString().replace('-', '_');
+    
                     fullFileName = String.format("%s%s%s__%s", defaultFS, storePath, filePrefix, fileSuffix);
                     endFullFileName = String.format("%s%s%s__%s", defaultFS, endStorePath, filePrefix, fileSuffix);
-                }
-                allFiles.add(endFullFileName);
-
-                // 只有文本格式写入时，才会自动加上文件后缀，其他格式即便指定同样的压缩格式，也不会有后缀，因此这里需要加上判断
-                if ("TEXT".equalsIgnoreCase(writerSliceConfig.getNecessaryValue(Key.FILE_TYPE, HdfsWriterErrorCode.REQUIRED_VALUE))) {
-                    //设置临时文件全路径和最终文件全路径
-                    if ("GZIP".equalsIgnoreCase(this.compress)) {
-                        this.tmpFiles.add(fullFileName + ".gz");
-                        this.endFiles.add(endFullFileName + ".gz");
+    
+                    while (allFiles.contains(endFullFileName)) {
+                        fileSuffix = UUID.randomUUID().toString().replace('-', '_');
+                        fullFileName = String.format("%s%s%s__%s", defaultFS, storePath, filePrefix, fileSuffix);
+                        endFullFileName = String.format("%s%s%s__%s", defaultFS, endStorePath, filePrefix, fileSuffix);
                     }
-                    else if ("BZIP2".equalsIgnoreCase(compress)) {
-                        this.tmpFiles.add(fullFileName + ".bz2");
-                        this.endFiles.add(endFullFileName + ".bz2");
-                    }
-                    else if ("ZLIB".equals(compress)) {
-                        this.tmpFiles.add(fullFileName + ".deflate");
-                        this.endFiles.add(endFullFileName + ".deflate");
-                    }
-                    else {
+                    allFiles.add(endFullFileName);
+    
+                    // 只有文本格式写入时，才会自动加上文件后缀，其他格式即便指定同样的压缩格式，也不会有后缀，因此这里需要加上判断
+                    if ("TEXT".equalsIgnoreCase(writerSliceConfig.getNecessaryValue(Key.FILE_TYPE, HdfsWriterErrorCode.REQUIRED_VALUE))) {
+                        //设置临时文件全路径和最终文件全路径
+                        if ("GZIP".equalsIgnoreCase(this.compress)) {
+                            this.tmpFiles.add(fullFileName + ".gz");
+                            this.endFiles.add(endFullFileName + ".gz");
+                        }
+                        else if ("BZIP2".equalsIgnoreCase(compress)) {
+                            this.tmpFiles.add(fullFileName + ".bz2");
+                            this.endFiles.add(endFullFileName + ".bz2");
+                        }
+                        else if ("ZLIB".equals(compress)) {
+                            this.tmpFiles.add(fullFileName + ".deflate");
+                            this.endFiles.add(endFullFileName + ".deflate");
+                        }
+                        else {
+                            this.tmpFiles.add(fullFileName);
+                            this.endFiles.add(endFullFileName);
+                        }
+                    } else {
                         this.tmpFiles.add(fullFileName);
                         this.endFiles.add(endFullFileName);
                     }
-                } else {
-                    this.tmpFiles.add(fullFileName);
-                    this.endFiles.add(endFullFileName);
+    
+                    splitedTaskConfig
+                            .set(Key.FILE_NAME,
+                                    fullFileName);
+    
+                    LOG.info("splited write file name:[{}]", fullFileName);
+    
+                    writerSplitConfigs.add(splitedTaskConfig);
                 }
-
-                splitedTaskConfig
-                        .set(Key.FILE_NAME,
-                                fullFileName);
-
-                LOG.info("splited write file name:[{}]", fullFileName);
-
-                writerSplitConfigs.add(splitedTaskConfig);
+            }else {
+                writerSplitConfigs.add(this.writerSliceConfig.clone());
             }
             LOG.info("end do split.");
             return writerSplitConfigs;
@@ -395,6 +405,8 @@ public class HdfsWriter
 
         private String fileType;
         private String fileName;
+        private String httpFS;
+        private String path;
 
         private HdfsHelper hdfsHelper = null;
 
@@ -407,6 +419,8 @@ public class HdfsWriter
             this.fileType = this.writerSliceConfig.getString(Key.FILE_TYPE).toUpperCase();
             //得当的已经是绝对路径，eg：hdfs://10.101.204.12:9000/user/hive/warehouse/writer.db/text/test.textfile
             this.fileName = this.writerSliceConfig.getString(Key.FILE_NAME);
+            this.httpFS = this.writerSliceConfig.getString(Key.HTTP_FS);
+            this.path = this.writerSliceConfig.getString(Key.PATH);
 
             hdfsHelper = new HdfsHelper();
             hdfsHelper.getFileSystem(defaultFS, writerSliceConfig);
@@ -435,10 +449,66 @@ public class HdfsWriter
             else if ("PARQUET".equals(fileType)) {
                 //写Parquet FILE
                 hdfsHelper.parquetFileStartWrite(lineReceiver, this.writerSliceConfig, this.fileName,
-                        this.getTaskPluginCollector());
+                        this.getTaskPluginCollector(), httpFS.equals("") ==  false);
+                String tmpPath = String.format("/tmp/%s", this.fileName);
+                if(httpFS.equals("") ==  false) {
+                    try {
+                        String httpFSURL = String.format("%s%s/%s?op=CREATE&data=true&user.name=root&overwrite=true", httpFS, path, this.fileName);
+                        String[] httpfsCMD = {"curl","-i","-X","put","-T",tmpPath,httpFSURL,"-H","Content-Type:application/octet-stream"};
+                        LOG.info("httpfs url : [{}]", httpFSURL);
+                        execCurl(httpfsCMD, tmpPath);
+                        // HttpRequest request = HttpRequest
+                        // .newBuilder(new URI(httpFSURL))
+                        // .headers("Content-Type", "application/octet-stream")
+                        // .PUT(HttpRequest.BodyPublishers.ofFile(tmpPath))
+                        // .build();
+                    } catch (Throwable t) {
+                        //TODO: handle exception
+                        LOG.error("httpfs: data upload failed");
+                    }finally{
+                        LOG.info("httpfs: data has been succeessfully converted and uploaded");
+                        deleteTmpFile(tmpPath);
+                    }
+                }
             }
 
             LOG.info("end do write");
+        }
+
+        private static String execCurl(String[] cmds, String tmpPath) {
+            ProcessBuilder process = new ProcessBuilder(cmds);
+            Process p;
+            try {
+                p = process.start();
+                BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream()));
+                StringBuilder builder = new StringBuilder();
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    builder.append(line);
+                    builder.append(System.getProperty("line.separator"));
+                }
+                return builder.toString();
+    
+            } catch (IOException e) {
+                e.printStackTrace();
+            }finally{
+                LOG.info("httpfs: data has been succeessfully converted and uploaded");
+                deleteTmpFile(tmpPath);
+            }
+            return null;
+        }
+
+        private static void deleteTmpFile(String filePath) {
+            try{
+                File file = new File(filePath);
+                if(file.delete()){
+                    LOG.info("httpfs: tmp file has been successfully deleted");
+                }else{
+                    LOG.error("httpfs: tmp file was deleted failed");
+                }
+            }catch(Exception e){
+                e.printStackTrace();
+            }
         }
 
         @Override

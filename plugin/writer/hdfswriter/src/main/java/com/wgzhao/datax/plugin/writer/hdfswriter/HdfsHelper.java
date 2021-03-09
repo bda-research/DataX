@@ -71,6 +71,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.io.File;
 import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.util.Arrays;
@@ -618,24 +619,24 @@ public class HdfsHelper
      * 写Parquetfile类型文件
      * 一个parquet文件的schema类似如下：
      * {
-     *    "type":	"record",
-     *    "name":	"testFile",
-     *    "doc":	"test records",
+     *    "type":   "record",
+     *    "name":   "testFile",
+     *    "doc":    "test records",
      *    "fields":
      *      [{
-     *        "name":	"id",
-     *        "type":	"int"
+     *        "name":   "id",
+     *        "type":   "int"
      *
      *      },
      *      {
-     *        "name":	"empName",
-     *        "type":	"string"
+     *        "name":   "empName",
+     *        "type":   "string"
      *      }
      *    ]
      *  }
      */
     public void parquetFileStartWrite(RecordReceiver lineReceiver, Configuration config, String fileName,
-            TaskPluginCollector taskPluginCollector)
+            TaskPluginCollector taskPluginCollector, Boolean isHTTPFS)
     {
 
         List<Configuration> columns = config.getListConfiguration(Key.COLUMN);
@@ -663,6 +664,12 @@ public class HdfsHelper
             }
         }
         Path path = new Path(fileName);
+        if(isHTTPFS == true) {
+            fileName = String.format("/tmp/%s", fileName);
+            File tmpFile = new File(fileName);
+            path = new Path(tmpFile.toURI());
+        }
+
         LOG.info("write parquet file {}", fileName);
         strschema = strschema.substring(0, strschema.length() - 1) + " ]}";
         Schema.Parser parser = new Schema.Parser().setValidate(true);
@@ -694,7 +701,9 @@ public class HdfsHelper
         }
         catch (Exception e) {
             LOG.error("写文件文件[{}]时发生IO异常,请检查您的网络是否正常！", fileName);
-            deleteDir(path.getParent());
+            if(isHTTPFS == false) {
+                deleteDir(path.getParent());
+            }
             throw DataXException.asDataXException(HdfsWriterErrorCode.Write_FILE_IO_ERROR, e);
         }
     }

@@ -32,6 +32,8 @@ public class Key
     public static final String PATH = "path";
     //must have
     public static final String DEFAULT_FS = "defaultFS";
+    // not must
+    public static final String HTTP_FS = "httpFS";
     //must have
     public static final String FILE_TYPE = "fileType";
     // must have
