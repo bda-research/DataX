@@ -38,10 +38,17 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.File;
+
+import okhttp3.MediaType;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.RequestBody;
+import okhttp3.Response;
 
 public class HdfsWriter
         extends Writer
@@ -454,14 +461,9 @@ public class HdfsWriter
                 if(httpFS.equals("") ==  false) {
                     try {
                         String httpFSURL = String.format("%s%s/%s?op=CREATE&data=true&user.name=root&overwrite=true", httpFS, path, this.fileName);
-                        String[] httpfsCMD = {"curl","-i","-X","put","-T",tmpPath,httpFSURL,"-H","Content-Type:application/octet-stream"};
-                        LOG.info("httpfs url : [{}]", httpFSURL);
-                        execCurl(httpfsCMD, tmpPath);
-                        // HttpRequest request = HttpRequest
-                        // .newBuilder(new URI(httpFSURL))
-                        // .headers("Content-Type", "application/octet-stream")
-                        // .PUT(HttpRequest.BodyPublishers.ofFile(tmpPath))
-                        // .build();
+                        MediaType type = MediaType.parse("application/octet-stream");
+                        String httpFSResponse = okHTTPPUT(type, httpFSURL, tmpPath);
+                        LOG.info("httpFS response : [{}]", httpFSResponse);
                     } catch (Throwable t) {
                         //TODO: handle exception
                         LOG.error("httpfs: data upload failed");
@@ -475,27 +477,24 @@ public class HdfsWriter
             LOG.info("end do write");
         }
 
-        private static String execCurl(String[] cmds, String tmpPath) {
-            ProcessBuilder process = new ProcessBuilder(cmds);
-            Process p;
-            try {
-                p = process.start();
-                BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream()));
-                StringBuilder builder = new StringBuilder();
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    builder.append(line);
-                    builder.append(System.getProperty("line.separator"));
-                }
-                return builder.toString();
+        private String okHTTPPUT(MediaType mediaType, String uploadUrl, String localPath) throws IOException {
+            File file = new File(localPath);
+            RequestBody body = RequestBody.create(mediaType, file);
+            Request request = new Request.Builder()
+                    .url(uploadUrl)
+                    .put(body)
+                    .build();
+
+            OkHttpClient client = new OkHttpClient.Builder()
+                    .connectTimeout(600, TimeUnit.SECONDS)
+                    .readTimeout(200, TimeUnit.SECONDS)
+                    .writeTimeout(600, TimeUnit.SECONDS)
+                    .build();
     
-            } catch (IOException e) {
-                e.printStackTrace();
-            }finally{
-                LOG.info("httpfs: data has been succeessfully converted and uploaded");
-                deleteTmpFile(tmpPath);
-            }
-            return null;
+            Response response = client
+                    .newCall(request)
+                    .execute();
+            return response.body().string() + ":" + response.code();
         }
 
         private static void deleteTmpFile(String filePath) {
