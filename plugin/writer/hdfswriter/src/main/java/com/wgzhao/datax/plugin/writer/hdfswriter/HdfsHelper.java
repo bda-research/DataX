@@ -654,13 +654,13 @@ public class HdfsHelper
         for (Configuration column : columns) {
             if (column.getString("type").toUpperCase().contains("DECIMAL(")) {
                 strschema += " {\"name\": \"" + column.getString("name")
-                        + "\", \"type\": {\"type\": \"fixed\", \"size\":16, \"logicalType\": \"decimal\", \"name\": \"decimal\", \"precision\": "
+                        + "\", \"type\": [\"null\", {\"type\": \"fixed\", \"size\":16, \"logicalType\": \"decimal\", \"name\": \"decimal\", \"precision\": "
                         + getDecimalprec(column.getString("type")) + ", \"scale\":"
-                        + getDecimalscale(column.getString("type")) + "}},";
+                        + getDecimalscale(column.getString("type")) + "}], \"default\": null},";
             }
             else {
-                strschema += " {\"name\": \"" + column.getString("name") + "\", \"type\": \""
-                        + column.getString("type") + "\"},";
+                strschema += " {\"name\": \"" + column.getString("name") + "\", \"type\": "
+                        + "[\"null\",\"" + column.getString("type") + "\"], \"default\": null},";
             }
         }
         Path path = new Path(fileName);
@@ -672,6 +672,7 @@ public class HdfsHelper
 
         LOG.info("write parquet file {}", fileName);
         strschema = strschema.substring(0, strschema.length() - 1) + " ]}";
+        LOG.info("schema of Avro: {}", strschema);
         Schema.Parser parser = new Schema.Parser().setValidate(true);
         Schema parSchema = parser.parse(strschema);
 
