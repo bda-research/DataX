@@ -719,6 +719,7 @@ public class HdfsHelper
 
         LOG.info("write parquet file {}", fileName);
         strschema = strschema.substring(0, strschema.length() - 1) + " ]}";
+        LOG.info("schema of Avro: {}", strschema);
         Schema.Parser parser = new Schema.Parser().setValidate(true);
         Schema parSchema = parser.parse(strschema);
 
