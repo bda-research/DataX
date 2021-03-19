@@ -205,31 +205,42 @@ public class HdfsHelper
             TaskPluginCollector taskPluginCollector, GenericRecordBuilder builder)
     {
 
-        int recordLength = record.getColumnNumber();
-        if (0 != recordLength) {
+        int nColumns = record.getColumnNumber();
+        if (0 != nColumns) {
             Column column;
-            for (int i = 0; i < recordLength; i++) {
+            for (int i = 0; i < nColumns; i++) {
                 column = record.getColumn(i);
-                if (null != column.getRawData()) {
-                    String rowData = column.getRawData().toString();
+                if (null != column.getRawData() || (columnsConfiguration.get(i).get(Key.TYPE) instanceof List) || columnsConfiguration.get(i).getString(Key.TYPE).toUpperCase() == "NULL") {
                     String colname = columnsConfiguration.get(i).getString("name");
-                    String typename = columnsConfiguration.get(i).getString(Key.TYPE).toUpperCase();
+					String typename;
+					if(columnsConfiguration.get(i).get(Key.TYPE) instanceof List){
+						if(null == column.getRawData()){
+							typename = (String)columnsConfiguration.get(i).get(Key.TYPE + "[0]");
+						}else{
+							typename = (String)columnsConfiguration.get(i).get(Key.TYPE + "[1]");
+						}
+					}else{
+						typename = columnsConfiguration.get(i).getString(Key.TYPE);
+					}
+
                     if (typename.contains("DECIMAL(")) {
                         typename = "DECIMAL";
                     }
-                    SupportHiveDataType columnType = SupportHiveDataType.valueOf(typename);
+                    SupportHiveDataType columnType = SupportHiveDataType.valueOf(typename.toUpperCase());
                     //根据writer端类型配置做类型转换
+					//columnType = SupportHiveDataType.valueOf("UNIONS");
+					//if(eachColumnConf.get(Key.TYPE) instanceof List){
                     try {
                         switch (columnType) {
                             case INT:
                             case INTEGER:
-                                builder.set(colname, Integer.valueOf(rowData));
+                                builder.set(colname, Integer.valueOf(column.getRawData().toString()));
                                 break;
                             case LONG:
                                 builder.set(colname, column.asLong());
                                 break;
                             case FLOAT:
-                                builder.set(colname, Float.valueOf(rowData));
+                                builder.set(colname, Float.valueOf(column.getRawData().toString()));
                                 break;
                             case DOUBLE:
                                 builder.set(colname, column.asDouble());
@@ -246,6 +257,9 @@ public class HdfsHelper
                             case BINARY:
                                 builder.set(colname, column.asBytes());
                                 break;
+						case NULL:
+							builder.set(colname, null);
+							break;
                             default:
                                 throw DataXException
                                         .asDataXException(
@@ -626,7 +640,7 @@ public class HdfsHelper
      *      [{
      *        "name":   "id",
      *        "type":   "int"
-     *
+     *        "default": -1
      *      },
      *      {
      *        "name":   "empName",
@@ -652,15 +666,48 @@ public class HdfsHelper
                 + "\"fields\": [";
 
         for (Configuration column : columns) {
-            if (column.getString("type").toUpperCase().contains("DECIMAL(")) {
-                strschema += " {\"name\": \"" + column.getString("name")
+			String defaultValue = null;
+			if(column.get(Key.DEFAULT_VALUE) instanceof String){
+				if(column.getString(Key.DEFAULT_VALUE) == "null"){
+					defaultValue = "null";
+				}else
+					defaultValue = "\""+column.getString(Key.DEFAULT_VALUE)+"\"";
+			}else if(column.get(Key.DEFAULT_VALUE) != null){
+				defaultValue = column.getString(Key.DEFAULT_VALUE);
+			}
+			
+            if (column.getString(Key.TYPE).toUpperCase().contains("DECIMAL(")) {
+                strschema += " {\"name\": \"" + column.getString(Key.NAME)
                         + "\", \"type\": {\"type\": \"fixed\", \"size\":16, \"logicalType\": \"decimal\", \"name\": \"decimal\", \"precision\": "
-                        + getDecimalprec(column.getString("type")) + ", \"scale\":"
-                        + getDecimalscale(column.getString("type")) + "}},";
-            }
-            else {
-                strschema += " {\"name\": \"" + column.getString("name") + "\", \"type\": \""
-                        + column.getString("type") + "\"},";
+                        + getDecimalprec(column.getString(Key.TYPE)) + ", \"scale\":"
+                        + getDecimalscale(column.getString(Key.TYPE)) + "}},";
+            }else if(column.get(Key.TYPE) instanceof List){
+				StringBuilder sb = new StringBuilder();
+				sb.append('[');
+				Boolean init = true;
+				for(String t : (List<String>)column.get(Key.TYPE)){
+					if(!init){
+						sb.append(',');
+					}
+					sb.append('"');
+					sb.append(t);
+					sb.append('"');
+					init = false;
+				}
+				sb.append(']');
+				
+				strschema += " {\"name\": \"" + column.getString(Key.NAME) + "\", \"type\": "
+					+ sb.toString();
+				if(null != defaultValue){
+					strschema += ",\"default\":"+defaultValue;
+				}
+				strschema += "},";
+			}else {
+                strschema += " {\"name\": \"" + column.getString(Key.NAME) + "\", \"type\": \""+ column.getString(Key.TYPE) + "\"";
+				if(null != defaultValue){
+					strschema += ",\"default\":"+defaultValue;
+				}
+				strschema += "},";
             }
         }
         Path path = new Path(fileName);
@@ -818,7 +865,8 @@ public class HdfsHelper
     {
         List<ObjectInspector> columnTypeInspectors = Lists.newArrayList();
         for (Configuration eachColumnConf : columns) {
-            SupportHiveDataType columnType = SupportHiveDataType.valueOf(eachColumnConf.getString(Key.TYPE).toUpperCase());
+			SupportHiveDataType columnType = SupportHiveDataType.valueOf(eachColumnConf.getString(Key.TYPE).toUpperCase());
+
             ObjectInspector objectInspector;
             switch (columnType) {
                 case TINYINT:

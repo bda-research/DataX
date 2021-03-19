@@ -36,5 +36,9 @@ public enum SupportHiveDataType
     CHAR,
     LONG,
     BOOLEAN,
-    BINARY
+    BINARY,
+	//support type null
+	NULL,
+	//complex type, which supported by avro
+	UNIONS
 }

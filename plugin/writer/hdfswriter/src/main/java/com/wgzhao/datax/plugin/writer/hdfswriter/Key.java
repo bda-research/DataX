@@ -33,7 +33,7 @@ public class Key
     //must have
     public static final String DEFAULT_FS = "defaultFS";
     // not must
-    public static final String HTTP_FS = "httpFS";
+    public static final String HTTP_FS = "httpFS";	
     //must have
     public static final String FILE_TYPE = "fileType";
     // must have
@@ -42,6 +42,8 @@ public class Key
     public static final String COLUMN = "column";
     public static final String NAME = "name";
     public static final String TYPE = "type";
+	// not must for column
+	public static final String DEFAULT_VALUE = "default";
 //    public static final String DATE_FORMAT = "dateFormat"
     // must have
     public static final String WRITE_MODE = "writeMode";
